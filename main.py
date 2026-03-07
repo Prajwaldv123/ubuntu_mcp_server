@@ -668,7 +668,7 @@ def create_secure_policy() -> SecurityPolicy:
         audit_actions=True,
         use_path_cache=False,
         use_shell_exec=False,
-        command_whitelist_mode=True,
+        command_whitelist_mode=False,
         allowed_commands=[
             "ls", "cat", "echo", "pwd", "whoami", "date", "uname",
             "grep", "head", "tail", "wc", "sort", "uniq", "cut",

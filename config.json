@@ -7,31 +7,23 @@
   },
   "security": {
     "policy_name": "safe",
-    "allowed_paths": [
-      "~/",
-      "/tmp",
-      "/var/tmp"
-    ],
     "forbidden_paths": [
-      "/etc/passwd",
-      "/etc/shadow", 
-      "/root",
-      "/boot",
-      "/sys",
-      "/proc"
-    ],
-    "allowed_commands": [
-      "ls", "cat", "echo", "pwd", "whoami", "date", "uname",
-      "grep", "find", "which", "file", "head", "tail",
-      "apt", "dpkg", "snap", "git", "curl", "wget",
-      "python3", "pip3", "npm", "node", "docker"
+      "/etc/shadow",
+      "/root/.ssh",
+      "/boot"
     ],
     "forbidden_commands": [
       "rm", "rmdir", "dd", "mkfs", "fdisk", "cfdisk",
-      "shutdown", "reboot", "halt", "init", "systemctl",
-      "service", "mount", "umount", "chmod", "chown"
+      "shutdown", "reboot", "halt", "init",
+      "systemctl", "service", "mount", "umount",
+      "chmod", "chown", "chgrp",
+      "su", "sudo", "passwd",
+      "useradd", "userdel", "usermod",
+      "iptables", "ufw", "firewalld",
+      "crontab", "at", "kill", "pkill"
     ],
-    "max_command_timeout": 30,
-    "allow_sudo": false
+    "max_command_timeout": 60,
+    "allow_sudo": false,
+    "audit_actions": true
   }
 }
