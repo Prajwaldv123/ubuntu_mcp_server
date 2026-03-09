@@ -94,6 +94,7 @@ docker run -d \
   -v /usr/bin/docker:/usr/bin/docker \
   -v $(which kubectl):/usr/local/bin/kubectl \
   -v /tmp/kube-config:/tmp/kube-config:ro \
+  -v /:/mnt/host:ro \
   -e KUBECONFIG=/tmp/kube-config \
   --restart unless-stopped \
   ubuntu_mcp_server:latest
