@@ -75,8 +75,7 @@ docker load < /tmp/ubuntu-mcp-server.tar.gz
 
 ```bash
 # Copy kubeconfig to a world-readable location
-cp /root/.kube/config /tmp/kube-config
-chmod 644 /tmp/kube-config
+chmod 644 /root/.kube/config
 ```
 
 ### Step 7 — Run the Container
@@ -93,9 +92,9 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /usr/bin/docker:/usr/bin/docker \
   -v $(which kubectl):/usr/local/bin/kubectl \
-  -v /tmp/kube-config:/tmp/kube-config:ro \
+  -v /root/.kube/config:/home/mcpuser/.kube/config:ro \
   -v /:/mnt/host:ro \
-  -e KUBECONFIG=/tmp/kube-config \
+  -e KUBECONFIG=/home/mcpuser/.kube/config \
   --restart unless-stopped \
   ubuntu_mcp_server:latest
 ```
