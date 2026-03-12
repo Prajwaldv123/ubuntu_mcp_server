@@ -86,10 +86,20 @@ docker run -d \
   -v /usr/bin/docker:/usr/bin/docker \
   -v $(which kubectl):/usr/local/bin/kubectl \
   -v /root/.kube/config:/root/.kube/config:ro \
+  -v /var/log/journal:/var/log/journal:ro \
+  -v /run/log/journal:/run/log/journal:ro \
+  -v /etc/machine-id:/etc/machine-id:ro \
+  -v /usr/bin/journalctl:/usr/bin/journalctl:ro \
+  -v /lib/systemd/libsystemd-shared-249.so:/lib/systemd/libsystemd-shared-249.so:ro \
+  -v /lib/x86_64-linux-gnu/libip4tc.so.2:/lib/x86_64-linux-gnu/libip4tc.so.2:ro \
   -v /:/mnt/host:ro \
   -e KUBECONFIG=/root/.kube/config \
   --restart unless-stopped \
   ubuntu_mcp_server:latest
+```
+
+```bash
+iptables -I INPUT -p tcp -s 172.17.0.0/16 --dport 16443 -j ACCEPT
 ```
 
 ---
