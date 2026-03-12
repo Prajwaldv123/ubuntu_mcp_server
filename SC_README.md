@@ -71,14 +71,7 @@ ssh onprem_shell@<VM_IP_ADDRESS>
 docker load < /tmp/ubuntu-mcp-server.tar.gz
 ```
 
-### Step 6 — Prepare kubeconfig
-
-```bash
-# Copy kubeconfig to a world-readable location
-chmod 644 /root/.kube/config
-```
-
-### Step 7 — Run the Container
+### Step 6 — Run the Container
 
 ```bash
 docker run -d \
