@@ -21,6 +21,8 @@ RUN apt-get update \
         findutils \
         grep \
         ca-certificates \
+        libip4tc2 \
+        systemd \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 

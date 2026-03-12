@@ -31,6 +31,7 @@ import re
 #     def tool(self, name): return lambda f: f
 #     async def run_stdio_async(self): print("MCP server mock running...")
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 
 class SecurityViolation(Exception):
@@ -655,7 +656,7 @@ def create_secure_policy() -> SecurityPolicy:
     script_dir = os.path.dirname(current_script)
 
     return SecurityPolicy(
-        allowed_paths=[home_dir, "/tmp", "/var/tmp"],
+        allowed_paths=[home_dir, "/tmp", "/var/tmp", "/mnt/host", "/mnt/host/var/onprem"],
         forbidden_paths=["/etc", "/root", "/boot", "/sys", "/proc", "/dev", "/var/log", "/var/lib", "/usr", "/sbin",
                          "/bin"],
         max_command_timeout=15,
@@ -681,7 +682,7 @@ def create_secure_policy() -> SecurityPolicy:
             "chmod", "chown", "chgrp", "su", "sudo", "passwd", "useradd",
             "userdel", "usermod", "crontab", "at", "batch", "nohup", "pkill", "kill"
         ],
-        server_executable_paths={script_dir, os.path.dirname(script_dir)},
+        server_executable_paths={p for p in {script_dir, os.path.dirname(script_dir)} if p != "/"},
         system_critical_paths={"/etc", "/boot", "/sys", "/proc", "/dev"}
     )
 
@@ -693,7 +694,7 @@ def create_development_policy() -> SecurityPolicy:
     script_dir = os.path.dirname(current_script)
 
     return SecurityPolicy(
-        allowed_paths=[home_dir, "/tmp", "/var/tmp", "/opt", "/usr/local"],
+        allowed_paths=[home_dir, "/tmp", "/var/tmp", "/opt", "/usr/local", "/mnt/host", "/mnt/host/var/onprem"],
         forbidden_paths=["/etc/passwd", "/etc/shadow", "/etc/sudoers", "/root", "/boot", "/sys", "/proc"],
         max_command_timeout=60,
         max_file_size=10 * 1024 * 1024,  # 10MB
@@ -711,7 +712,7 @@ def create_development_policy() -> SecurityPolicy:
             "dd", "mkfs", "fdisk", "cfdisk", "shutdown", "reboot", "halt",
             "init", "passwd", "useradd", "userdel", "usermod", "su", "sudo"
         ],
-        server_executable_paths={script_dir, os.path.dirname(script_dir)},
+        server_executable_paths={p for p in {script_dir, os.path.dirname(script_dir)} if p != "/"},
         system_critical_paths={"/boot", "/sys", "/proc", "/dev"}
     )
 
@@ -724,22 +725,43 @@ def create_ubuntu_mcp_server(security_policy: SecurityPolicy) -> FastMCP:
     def format_error(e: Exception) -> str:
         return json.dumps({"error": str(e), "type": type(e).__name__}, indent=2)
 
-    @mcp.tool("execute_command")
-    async def execute_command(command: str, working_dir: str = None) -> str:
+    @mcp.tool(
+        "execute_command",
+        annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False),
+    )
+    async def execute_command(command: str, working_dir: str = None, confirmed: bool = False) -> str:
         """Executes a shell command on the Ubuntu system.
+
+        ⚠️ REQUIRES CONFIRMATION. Call first with confirmed=False to preview — the tool will
+        return a description of what will run WITHOUT executing it. Only call with confirmed=True
+        after the user has explicitly approved the action.
+
         Args:
             command: The shell command to execute.
             working_dir: Optional working directory for the command.
+            confirmed: Must be True to actually execute. Defaults to False (preview only).
         Returns:
-            A JSON string with the command results, including stdout, stderr, and return code.
+            A JSON string with the command results (stdout, stderr, return_code), or a
+            preview message if confirmed=False.
         """
+        if not confirmed:
+            preview = {
+                "status": "AWAITING_CONFIRMATION",
+                "command": command,
+                "working_dir": working_dir or "(default)",
+                "message": "This command has NOT been executed. Ask the user 'Can I run this command?' and only call again with confirmed=True if they say yes.",
+            }
+            return json.dumps(preview, indent=2)
         try:
             result = await controller.execute_command(command, working_dir)
             return json.dumps(result, indent=2)
         except Exception as e:
             return format_error(e)
 
-    @mcp.tool("list_directory")
+    @mcp.tool(
+        "list_directory",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    )
     async def list_directory(path: str) -> str:
         """Lists the contents of a directory.
         Args:
@@ -753,7 +775,10 @@ def create_ubuntu_mcp_server(security_policy: SecurityPolicy) -> FastMCP:
         except Exception as e:
             return format_error(e)
 
-    @mcp.tool("read_file")
+    @mcp.tool(
+        "read_file",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    )
     async def read_file(file_path: str) -> str:
         """Reads the contents of a file.
         Args:
@@ -767,23 +792,44 @@ def create_ubuntu_mcp_server(security_policy: SecurityPolicy) -> FastMCP:
             # Distinguish content from error by returning JSON for errors
             return format_error(e)
 
-    @mcp.tool("write_file")
-    async def write_file(file_path: str, content: str, create_dirs: bool = False) -> str:
+    @mcp.tool(
+        "write_file",
+        annotations=ToolAnnotations(destructiveHint=True, readOnlyHint=False),
+    )
+    async def write_file(file_path: str, content: str, create_dirs: bool = False, confirmed: bool = False) -> str:
         """Writes content to a file, creating backups of existing files.
+
+        ⚠️ REQUIRES CONFIRMATION. Call first with confirmed=False to preview — the tool will
+        return a description of what will be written WITHOUT writing anything. Only call with
+        confirmed=True after the user has explicitly approved the action.
+
         Args:
             file_path: The path where to write the file.
             content: The content to write.
             create_dirs: If True, create parent directories if they don't exist.
+            confirmed: Must be True to actually write. Defaults to False (preview only).
         Returns:
             A success message or a JSON error object on failure.
         """
+        if not confirmed:
+            preview = {
+                "status": "AWAITING_CONFIRMATION",
+                "file_path": file_path,
+                "content_preview": content[:200] + ("..." if len(content) > 200 else ""),
+                "create_dirs": create_dirs,
+                "message": "This file has NOT been written. Ask the user 'Can I write this file?' and only call again with confirmed=True if they say yes.",
+            }
+            return json.dumps(preview, indent=2)
         try:
             success = controller.write_file(file_path, content, create_dirs)
             return json.dumps({"success": success, "path": file_path})
         except Exception as e:
             return format_error(e)
 
-    @mcp.tool("get_system_info")
+    @mcp.tool(
+        "get_system_info",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    )
     async def get_system_info() -> str:
         """Gets basic system information.
         Returns:
@@ -795,7 +841,10 @@ def create_ubuntu_mcp_server(security_policy: SecurityPolicy) -> FastMCP:
         except Exception as e:
             return format_error(e)
 
-    @mcp.tool("install_package")
+    @mcp.tool(
+        "install_package",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    )
     async def install_package(package_name: str) -> str:
         """
         Checks if a package is available for installation using 'apt'.
@@ -819,7 +868,10 @@ def create_ubuntu_mcp_server(security_policy: SecurityPolicy) -> FastMCP:
         except Exception as e:
             return format_error(e)
 
-    @mcp.tool("search_packages")
+    @mcp.tool(
+        "search_packages",
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    )
     async def search_packages(query: str) -> str:
         """
         Searches for packages using 'apt search'.
