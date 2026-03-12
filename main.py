@@ -717,6 +717,58 @@ def create_development_policy() -> SecurityPolicy:
     )
 
 
+def _classify_command(command: str) -> bool:
+    """
+    Return True if the command is read-only (no confirmation needed).
+    Checks base command name and, for multi-verb CLIs (docker/kubectl/apt),
+    also inspects the subcommand.
+    """
+    try:
+        parts = shlex.split(command.strip())
+    except ValueError:
+        return False  # malformed — treat as destructive
+
+    if not parts:
+        return False
+
+    base = os.path.basename(parts[0])
+    subcommand = parts[1].lower() if len(parts) > 1 else ""
+
+    # Commands that are always read-only regardless of arguments
+    ALWAYS_READONLY = {
+        "ls", "cat", "grep", "find", "head", "tail", "wc", "sort", "uniq", "cut",
+        "ps", "df", "du", "uname", "whoami", "date", "echo", "which", "file", "stat",
+        "pwd", "id", "hostname", "uptime", "free", "lscpu", "lsblk", "lsof",
+        "journalctl", "dmesg", "vmstat", "iostat", "env", "printenv",
+        "ip", "ss", "netstat", "ifconfig",
+    }
+    if base in ALWAYS_READONLY:
+        return True
+
+    # docker: read-only subcommands
+    DOCKER_READONLY = {
+        "ps", "images", "logs", "inspect", "info", "version",
+        "stats", "events", "port", "top", "diff", "history", "search",
+    }
+    if base == "docker" and subcommand in DOCKER_READONLY:
+        return True
+
+    # kubectl: read-only subcommands
+    KUBECTL_READONLY = {
+        "get", "describe", "logs", "top", "explain", "version",
+        "api-resources", "api-versions", "cluster-info", "diff",
+    }
+    if base == "kubectl" and subcommand in KUBECTL_READONLY:
+        return True
+
+    # apt/apt-get: read-only subcommands
+    APT_READONLY = {"list", "search", "show", "policy"}
+    if base in ("apt", "apt-get") and subcommand in APT_READONLY:
+        return True
+
+    return False
+
+
 def create_ubuntu_mcp_server(security_policy: SecurityPolicy) -> FastMCP:
     """Create and configure the secure Ubuntu MCP server"""
     controller = SecureUbuntuController(security_policy)
@@ -732,19 +784,22 @@ def create_ubuntu_mcp_server(security_policy: SecurityPolicy) -> FastMCP:
     async def execute_command(command: str, working_dir: str = None, confirmed: bool = False) -> str:
         """Executes a shell command on the Ubuntu system.
 
-        ⚠️ REQUIRES CONFIRMATION. Call first with confirmed=False to preview — the tool will
-        return a description of what will run WITHOUT executing it. Only call with confirmed=True
-        after the user has explicitly approved the action.
+        Read-only commands (e.g. docker ps, kubectl get, ls, journalctl) run immediately
+        without confirmation. Destructive or state-changing commands (e.g. docker stop,
+        kubectl apply, kubectl delete, apt install) require explicit user approval:
+        call first with confirmed=False to preview, then with confirmed=True after the
+        user approves.
 
         Args:
             command: The shell command to execute.
             working_dir: Optional working directory for the command.
-            confirmed: Must be True to actually execute. Defaults to False (preview only).
+            confirmed: Only checked for destructive commands. Read-only commands always
+                       execute regardless of this flag. Defaults to False.
         Returns:
             A JSON string with the command results (stdout, stderr, return_code), or a
-            preview message if confirmed=False.
+            preview/awaiting-confirmation message for unconfirmed destructive commands.
         """
-        if not confirmed:
+        if not _classify_command(command) and not confirmed:
             preview = {
                 "status": "AWAITING_CONFIRMATION",
                 "command": command,
