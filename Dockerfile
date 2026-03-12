@@ -42,11 +42,7 @@ COPY main.py config.py config.json ./
 COPY docker-entrypoint.sh ./
 RUN chmod +x /app/docker-entrypoint.sh
 
-RUN mkdir -p /tmp/mcp_logs \
- && useradd -m -s /bin/bash mcpuser \
- && chown -R mcpuser:mcpuser /app /tmp/mcp_logs
-
-USER mcpuser
+RUN mkdir -p /tmp/mcp_logs 
 
 EXPOSE 8080
 
